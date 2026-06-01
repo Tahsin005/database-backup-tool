@@ -68,7 +68,7 @@ func runStart(cmd *cobra.Command, args []string) {
 			os.Exit(1)
 		}
 
-		// Pparent exits here — terminal is freed
+		// parent exits here — terminal is freed
 		fmt.Printf("Backup daemon started for profile %q (PID: %d)\n", profileName, child.Process.Pid)
 		fmt.Println("Run \"backuptool status\" to check its state.")
 		os.Exit(0)

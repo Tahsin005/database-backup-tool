@@ -48,14 +48,14 @@ func RunBackup(pg *db.Postgres, logger *os.File) error {
 }
 
 func StartScheduler(pg *db.Postgres) {
-	// Log file goes to ~/.backuptool/<dbname>.log
+	// log file goes to ~/.backuptool/<dbname>.log
 	logFile, err := openLogFile(pg.DBName)
 	if err != nil {
 		os.Exit(1)
 	}
 	defer logFile.Close()
 
-	// Run once immediately
+	// run once immediately
 	if err := RunBackup(pg, logFile); err != nil {
 		fmt.Fprintf(logFile, "[%s] Backup error: %v\n", time.Now().Format("15:04:05"), err)
 	}
