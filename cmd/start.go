@@ -98,7 +98,7 @@ func runStart(cmd *cobra.Command, args []string) {
 	)
 
 	// start the backup scheduler — this blocks forever
-	backup.StartScheduler(pg)
+	backup.StartScheduler(pg, profile.BackupDir, profile.Interval)
 }
 
 // -------------------------------------------------------

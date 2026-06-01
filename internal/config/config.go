@@ -16,6 +16,9 @@ type DBProfile struct {
 	Username string
 	Password string
 	DBName string
+	Storage string
+	BackupDir string
+	Interval int
 }
 
 // returns ~/.backuptool
@@ -62,7 +65,6 @@ func LoadAllProfiles() (map[string]DBProfile, error) {
 
 	return parseConfig(string(data))
 }
-
 
 // loads a single profile by name
 func LoadProfile(name string) (DBProfile, error) {
@@ -121,6 +123,9 @@ func writeAllProfiles(profiles map[string]DBProfile) error {
 		sb.WriteString(fmt.Sprintf("username = %s\n", p.Username))
 		sb.WriteString(fmt.Sprintf("password = %s\n", p.Password))
 		sb.WriteString(fmt.Sprintf("dbname   = %s\n", p.DBName))
+		sb.WriteString(fmt.Sprintf("storage   = %s\n", p.Storage))
+		sb.WriteString(fmt.Sprintf("backupdir = %s\n", p.BackupDir))
+		sb.WriteString(fmt.Sprintf("interval  = %d\n", p.Interval))
 		sb.WriteString("\n")
 	}
 
@@ -179,6 +184,15 @@ func parseConfig(content string) (map[string]DBProfile, error) {
 			current.Password = val
 		case "dbname":
 			current.DBName = val
+		case "storage":                         
+		    current.Storage = val
+		case "backupdir":                        
+		    current.BackupDir = val
+		case "interval":
+		    interval, err := strconv.Atoi(val)
+		    if err == nil {
+		        current.Interval = interval
+		    }
 		}
 	}
 

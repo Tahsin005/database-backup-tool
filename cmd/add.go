@@ -4,12 +4,13 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
-	"github.com/spf13/cobra"
 	"github.com/Tahsin005/database-backup-tool/internal/config"
 	"github.com/Tahsin005/database-backup-tool/internal/db"
+	"github.com/spf13/cobra"
 )
 
 var addCmd = &cobra.Command{
@@ -35,7 +36,7 @@ func runAdd(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 
-	// Check if name already exists
+	// check if name already exists
 	exists, err := config.ProfileExists(name)
 	if err != nil {
 		fmt.Printf("Error checking config: %v\n", err)
@@ -46,7 +47,7 @@ func runAdd(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 
-	// Step 2: DB type (only postgres for now)
+	// DB type (only postgres for now)
 	fmt.Println("Database type:")
 	fmt.Println("  [1] PostgreSQL")
 	dbTypeInput := prompt(reader, "Choose (1): ")
@@ -87,6 +88,28 @@ func runAdd(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 
+	// storage type
+	fmt.Println("Storage type:")
+	fmt.Println("  [1] Local")
+	storageInput := promptWithDefault(reader, "Choose", "1")
+	if storageInput != "1" {
+	    fmt.Println("Error: only local storage is supported right now")
+	    os.Exit(1)
+	}
+	storage := "local"
+	
+	// backup directory
+	defaultDir := filepath.Join(os.Getenv("HOME"), "backups")
+	backupDir := promptWithDefault(reader, "Backup directory", defaultDir)
+	
+	// backup interval
+	intervalStr := promptWithDefault(reader, "Backup interval (minutes)", "60")
+	interval, err := strconv.Atoi(intervalStr)
+	if err != nil || interval < 1 {
+	    fmt.Println("Error: interval must be a positive number")
+	    os.Exit(1)
+	}
+
 	// test the connection before saving
 	fmt.Println()
 	fmt.Println("Testing connection...")
@@ -109,6 +132,9 @@ func runAdd(cmd *cobra.Command, args []string) {
 		Username: username,
 		Password: password,
 		DBName:   dbName,
+		Storage:  storage,
+		BackupDir: backupDir,
+		Interval: interval,
 	}
 
 	if err := config.SaveProfile(profile); err != nil {

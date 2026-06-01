@@ -42,6 +42,9 @@ func runStatus(cmd *cobra.Command, args []string) {
 		fmt.Printf("Profile  : %s\n", p.Name)
 		fmt.Printf("Database : %s (%s)\n", p.DBName, p.Type)
 		fmt.Printf("Host     : %s:%d\n", p.Host, p.Port)
+		fmt.Printf("Storage    : %s\n", p.Storage)
+		fmt.Printf("Backup dir : %s\n", p.BackupDir)
+		fmt.Printf("Interval   : every %d min\n", p.Interval)
 
 		// daemon status
 		if isAlreadyRunning(p.Name) {
@@ -52,7 +55,7 @@ func runStatus(cmd *cobra.Command, args []string) {
 		}
 
 		// last backup info
-		lastFile, lastTime, err := findLastBackup(p.DBName)
+		lastFile, lastTime, err := findLastBackup(p.DBName, p.BackupDir)
 		if err != nil || lastFile == "" {
 			fmt.Printf("Last backup: none yet\n")
 		} else {
@@ -87,10 +90,10 @@ func readPID(profileName string) int {
 	return pid
 }
 
-// looks in the current directory for the most recent
+// looks in the backup directory for the most recent
 // backup file matching backup_<dbname>_*.sql.gz
-func findLastBackup(dbName string) (string, time.Time, error) {
-	pattern := fmt.Sprintf("backup_%s_*.sql.gz", dbName)
+func findLastBackup(dbName string, backupDir string) (string, time.Time, error) {
+	pattern := filepath.Join(backupDir, fmt.Sprintf("backup_%s_*.sql.gz", dbName))
 	matches, err := filepath.Glob(pattern)
 	if err != nil {
 		return "", time.Time{}, err
