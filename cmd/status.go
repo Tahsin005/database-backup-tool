@@ -46,6 +46,12 @@ func runStatus(cmd *cobra.Command, args []string) {
 		fmt.Printf("Backup dir : %s\n", p.BackupDir)
 		fmt.Printf("Interval   : every %d min\n", p.Interval)
 
+		enabled := "yes"
+		if !p.Enabled {
+			enabled = "no"
+		}
+		fmt.Printf("Enabled  : %s\n", enabled)
+
 		// daemon status
 		if isAlreadyRunning(p.Name) {
 			pid := readPID(p.Name)

@@ -32,25 +32,31 @@ func runList(cmd *cobra.Command, args []string) {
 		return
 	}
 
-	// Header
-	fmt.Printf("\n%-20s %-12s %-16s %-6s %-16s\n",
-		"NAME", "TYPE", "HOST", "PORT", "DATABASE")
-	fmt.Println("-------------------------------------------------------------------")
-
+	// header
+	fmt.Printf("\n%-20s %-12s %-16s %-6s %-16s %-10s\n",
+    	"NAME", "TYPE", "HOST", "PORT", "DATABASE", "ENABLED")
+	fmt.Println("-----------------------------------------------------------------------------")
+	
 	for _, p := range profiles {
-		// Check if daemon is running for this profile
+		// check if daemon is running for this profile
 		status := "stopped"
 		if isAlreadyRunning(p.Name) {
 			status = "running"
 		}
 
-		fmt.Printf("%-20s %-12s %-16s %-6d %-16s [%s]\n",
-			p.Name,
-			p.Type,
-			p.Host,
-			p.Port,
-			p.DBName,
-			status,
+		enabled := "yes"
+		if !p.Enabled {
+		    enabled = "no"
+		}
+		
+		fmt.Printf("%-20s %-12s %-16s %-6d %-16s %-10s [%s]\n",
+		    p.Name,
+		    p.Type,
+		    p.Host,
+		    p.Port,
+		    p.DBName,
+		    enabled,
+		    status,
 		)
 	}
 

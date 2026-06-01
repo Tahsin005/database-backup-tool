@@ -39,6 +39,12 @@ func runStart(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 
+	if !profile.Enabled {
+	    fmt.Printf("Error: profile %q is disabled.\n", profileName)
+	    fmt.Printf("Run \"backuptool edit %s\" to enable it.\n", profileName)
+	    os.Exit(1)
+	}
+
 	if !daemonMode {
 		// -------------------------------------------------------
 		// FOREGROUND MODE

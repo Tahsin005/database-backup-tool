@@ -19,6 +19,7 @@ type DBProfile struct {
 	Storage string
 	BackupDir string
 	Interval int
+	Enabled bool
 }
 
 // returns ~/.backuptool
@@ -126,6 +127,7 @@ func writeAllProfiles(profiles map[string]DBProfile) error {
 		sb.WriteString(fmt.Sprintf("storage   = %s\n", p.Storage))
 		sb.WriteString(fmt.Sprintf("backupdir = %s\n", p.BackupDir))
 		sb.WriteString(fmt.Sprintf("interval  = %d\n", p.Interval))
+		sb.WriteString(fmt.Sprintf("enabled   = %t\n", p.Enabled)) 
 		sb.WriteString("\n")
 	}
 
@@ -193,6 +195,8 @@ func parseConfig(content string) (map[string]DBProfile, error) {
 		    if err == nil {
 		        current.Interval = interval
 		    }
+		case "enabled":
+			current.Enabled = val == "true"
 		}
 	}
 
@@ -202,4 +206,18 @@ func parseConfig(content string) (map[string]DBProfile, error) {
 	}
 
 	return profiles, nil
+}
+
+func RemoveProfile(name string) error {
+	all, err := LoadAllProfiles()
+	if err != nil {
+		return err
+	}
+
+	if _, ok := all[name]; !ok {
+		return fmt.Errorf("no profile named %q found", name)
+	}
+
+	delete(all, name)
+	return writeAllProfiles(all)
 }

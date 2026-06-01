@@ -135,6 +135,7 @@ func runAdd(cmd *cobra.Command, args []string) {
 		Storage:  storage,
 		BackupDir: backupDir,
 		Interval: interval,
+		Enabled:   true,
 	}
 
 	if err := config.SaveProfile(profile); err != nil {
