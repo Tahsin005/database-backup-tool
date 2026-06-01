@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"syscall"
 
 	"github.com/spf13/cobra"
 	"github.com/Tahsin005/database-backup-tool/internal/backup"
@@ -79,15 +80,15 @@ func runStart(cmd *cobra.Command, args []string) {
 	// We are the background child. Do the real work.
 	// -------------------------------------------------------
 
-	// Write our PID to ~/.backuptool/<profileName>.pid
+	// write our PID to ~/.backuptool/<profileName>.pid
 	if err := writePIDFile(profileName); err != nil {
 		os.Exit(1)
 	}
 
-	// Clean up PID file when we exit
+	// clean up PID file when we exit
 	defer deletePIDFile(profileName)
 
-	// Connect to the database
+	// connect to the database
 	pg := db.NewPostgres(
 		profile.Host,
 		profile.Port,
@@ -96,7 +97,7 @@ func runStart(cmd *cobra.Command, args []string) {
 		profile.DBName,
 	)
 
-	// Start the backup scheduler — this blocks forever
+	// start the backup scheduler — this blocks forever
 	backup.StartScheduler(pg)
 }
 
@@ -135,7 +136,7 @@ func isAlreadyRunning(profileName string) bool {
 
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return false // no PID file = not running
+		return false
 	}
 
 	pid, err := strconv.Atoi(string(data))
@@ -143,14 +144,12 @@ func isAlreadyRunning(profileName string) bool {
 		return false
 	}
 
-	// Check if a process with this PID actually exists
 	process, err := os.FindProcess(pid)
 	if err != nil {
 		return false
 	}
 
-	// os.FindProcess always succeeds on Linux
-	// Send signal 0 — doesn't kill the process, just checks if it exists
-	err = process.Signal(os.Signal(nil))
+	// Signal 0 = don't kill, just check if process exists
+	err = process.Signal(syscall.Signal(0))
 	return err == nil
 }
