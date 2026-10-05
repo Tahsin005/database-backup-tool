@@ -46,7 +46,7 @@ func EnsureConfigDir() error {
 	if err != nil {
 		return err
 	}
-	return os.MkdirAll(dir, 0700) // 0700 = only owner can read/write
+	return os.MkdirAll(dir, 0700) // only owner can read and write
 }
 
 // reads settings.conf and returns all profiles
@@ -131,7 +131,7 @@ func writeAllProfiles(profiles map[string]DBProfile) error {
 		sb.WriteString("\n")
 	}
 
-	// 0600 = only owner can read/write
+	// only owner can read and write
 	return os.WriteFile(path, []byte(sb.String()), 0600)
 }
 
@@ -157,7 +157,7 @@ func parseConfig(content string) (map[string]DBProfile, error) {
 			continue
 		}
 
-		// Key = value line
+		// key = value line
 		if current == nil {
 			continue // no section started yet, skip
 		}

@@ -2,16 +2,19 @@ package cmd
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"os"
-	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/Tahsin005/database-backup-tool/internal/config"
+	"github.com/Tahsin005/database-backup-tool/internal/daemon"
 	"github.com/Tahsin005/database-backup-tool/internal/db"
 	"github.com/Tahsin005/database-backup-tool/internal/monitor"
 )
@@ -200,21 +203,18 @@ func runMonitorStart(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 
+	d := daemon.New(profileName, daemon.KindMonitor)
+
 	if !monitorDaemonMode {
 		// foreground — check if already running
-		if isMonitorRunning(profileName) {
+		if running, _ := d.IsRunning(); running {
 			fmt.Printf("Monitor daemon for %q is already running.\n", profileName)
 			os.Exit(1)
 		}
 
 		// re-launch as background daemon
-		self := os.Args[0]
-		child := exec.Command(self, "monitor", "start", profileName, "--daemon")
-		child.Stdout = nil
-		child.Stderr = nil
-		child.Stdin = nil
-
-		if err := child.Start(); err != nil {
+		child, err := d.LaunchBackground("monitor", "start", profileName, "--daemon")
+		if err != nil {
 			fmt.Printf("Failed to start monitor daemon: %v\n", err)
 			os.Exit(1)
 		}
@@ -224,13 +224,17 @@ func runMonitorStart(cmd *cobra.Command, args []string) {
 		os.Exit(0)
 	}
 
-	// daemon mode — write PID and start loop
-	if err := writeMonitorPIDFile(profileName); err != nil {
+	// daemon mode: write pid and start loop
+	if err := d.WritePID(); err != nil {
+		fmt.Printf("Error writing PID: %v\n", err)
 		os.Exit(1)
 	}
-	defer deleteMonitorPIDFile(profileName)
+	defer d.DeletePID()
 
-	monitor.StartMonitor(profile)
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	monitor.StartMonitor(ctx, profile)
 }
 
 // monitor stop
@@ -245,12 +249,13 @@ var monitorStopCmd = &cobra.Command{
 func runMonitorStop(cmd *cobra.Command, args []string) {
 	profileName := args[0]
 
-	if !isMonitorRunning(profileName) {
+	d := daemon.New(profileName, daemon.KindMonitor)
+	if running, _ := d.IsRunning(); !running {
 		fmt.Printf("Monitor daemon for %q is not running.\n", profileName)
 		os.Exit(0)
 	}
 
-	if err := stopMonitorDaemon(profileName); err != nil {
+	if err := d.Stop(5 * time.Second); err != nil {
 		fmt.Printf("Error stopping monitor daemon: %v\n", err)
 		os.Exit(1)
 	}
@@ -295,8 +300,8 @@ func runMonitorStatus(cmd *cobra.Command, args []string) {
 		}
 		fmt.Printf("Enabled  : %s\n", enabledStr)
 
-		if isMonitorRunning(p.Name) {
-			pid := readMonitorPID(p.Name)
+		d := daemon.New(p.Name, daemon.KindMonitor)
+		if running, pid := d.IsRunning(); running {
 			fmt.Printf("Daemon   : running (PID: %d)\n", pid)
 		} else {
 			fmt.Printf("Daemon   : stopped\n")
@@ -333,7 +338,8 @@ func runMonitorRemove(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 
-	if isMonitorRunning(profileName) {
+	d := daemon.New(profileName, daemon.KindMonitor)
+	if running, _ := d.IsRunning(); running {
 		fmt.Printf("Error: monitor daemon for %q is still running.\n", profileName)
 		fmt.Printf("Run \"backuptool monitor stop %s\" first.\n", profileName)
 		os.Exit(1)
@@ -354,93 +360,6 @@ func runMonitorRemove(cmd *cobra.Command, args []string) {
 	}
 
 	fmt.Printf("Monitor profile %q removed.\n", profileName)
-}
-
-// Monitor PID file helpers
-
-func monitorPIDFilePath(profileName string) (string, error) {
-	dir, err := config.ConfigDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(dir, profileName+".monitor.pid"), nil
-}
-
-func writeMonitorPIDFile(profileName string) error {
-	path, err := monitorPIDFilePath(profileName)
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(path, []byte(strconv.Itoa(os.Getpid())), 0600)
-}
-
-func deleteMonitorPIDFile(profileName string) {
-	path, _ := monitorPIDFilePath(profileName)
-	os.Remove(path)
-}
-
-func isMonitorRunning(profileName string) bool {
-	path, err := monitorPIDFilePath(profileName)
-	if err != nil {
-		return false
-	}
-
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return false
-	}
-
-	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
-	if err != nil {
-		return false
-	}
-
-	process, err := os.FindProcess(pid)
-	if err != nil {
-		return false
-	}
-
-	return process.Signal(syscall.Signal(0)) == nil
-}
-
-func readMonitorPID(profileName string) int {
-	path, _ := monitorPIDFilePath(profileName)
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return 0
-	}
-	pid, _ := strconv.Atoi(strings.TrimSpace(string(data)))
-	return pid
-}
-
-func stopMonitorDaemon(profileName string) error {
-	path, err := monitorPIDFilePath(profileName)
-	if err != nil {
-		return err
-	}
-
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return err
-	}
-
-	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
-	if err != nil {
-		os.Remove(path)
-		return fmt.Errorf("PID file corrupted")
-	}
-
-	process, err := os.FindProcess(pid)
-	if err != nil {
-		return err
-	}
-
-	if err := process.Kill(); err != nil {
-		return err
-	}
-
-	os.Remove(path)
-	return nil
 }
 
 func monitorLogPath(dbName string) (string, error) {

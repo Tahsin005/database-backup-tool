@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/Tahsin005/database-backup-tool/internal/config"
+	"github.com/Tahsin005/database-backup-tool/internal/daemon"
 )
 
 var removeCmd = &cobra.Command{
@@ -32,8 +33,10 @@ func runRemove(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 
+	d := daemon.New(profileName, daemon.KindBackup)
+
 	// refuse if daemon is running
-	if isAlreadyRunning(profileName) {
+	if running, _ := d.IsRunning(); running {
 		fmt.Printf("Error: daemon for %q is still running.\n", profileName)
 		fmt.Printf("Run \"backuptool stop %s\" first.\n", profileName)
 		os.Exit(1)

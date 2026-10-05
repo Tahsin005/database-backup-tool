@@ -6,9 +6,11 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/Tahsin005/database-backup-tool/internal/config"
+	"github.com/Tahsin005/database-backup-tool/internal/daemon"
 )
 
 var editCmd = &cobra.Command{
@@ -33,8 +35,10 @@ func runEdit(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 
+	d := daemon.New(profileName, daemon.KindBackup)
+
 	// if daemon is running, ask user if they want to stop it
-	if isAlreadyRunning(profileName) {
+	if running, _ := d.IsRunning(); running {
 		fmt.Printf("Daemon for %q is currently running.\n", profileName)
 		fmt.Print("Stop it and proceed with editing? (yes/no): ")
 		answer, _ := reader.ReadString('\n')
@@ -46,7 +50,7 @@ func runEdit(cmd *cobra.Command, args []string) {
 		}
 
 		// stop the daemon
-		if err := stopDaemon(profileName); err != nil {
+		if err := d.Stop(5 * time.Second); err != nil {
 			fmt.Printf("Failed to stop daemon: %v\n", err)
 			os.Exit(1)
 		}
@@ -98,35 +102,4 @@ func runEdit(cmd *cobra.Command, args []string) {
 	} else {
 		fmt.Printf("Profile is now disabled. Daemon will not start for this profile.\n")
 	}
-}
-
-// shared stop logic used by both edit and stop commands
-func stopDaemon(profileName string) error {
-	pidPath, err := pidFilePath(profileName)
-	if err != nil {
-		return err
-	}
-
-	data, err := os.ReadFile(pidPath)
-	if err != nil {
-		return err
-	}
-
-	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
-	if err != nil {
-		os.Remove(pidPath)
-		return fmt.Errorf("PID file corrupted")
-	}
-
-	process, err := os.FindProcess(pid)
-	if err != nil {
-		return err
-	}
-
-	if err := process.Kill(); err != nil {
-		return err
-	}
-
-	os.Remove(pidPath)
-	return nil
 }

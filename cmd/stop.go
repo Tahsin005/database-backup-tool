@@ -3,9 +3,11 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/Tahsin005/database-backup-tool/internal/config"
+	"github.com/Tahsin005/database-backup-tool/internal/daemon"
 )
 
 var stopCmd = &cobra.Command{
@@ -28,12 +30,13 @@ func runStop(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 
-	if !isAlreadyRunning(profileName) {
+	d := daemon.New(profileName, daemon.KindBackup)
+	if running, _ := d.IsRunning(); !running {
 		fmt.Printf("Daemon for %q is not running.\n", profileName)
 		os.Exit(0)
 	}
 
-	if err := stopDaemon(profileName); err != nil {
+	if err := d.Stop(5 * time.Second); err != nil {
 		fmt.Printf("Error stopping daemon: %v\n", err)
 		os.Exit(1)
 	}

@@ -10,6 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/Tahsin005/database-backup-tool/internal/config"
+	"github.com/Tahsin005/database-backup-tool/internal/daemon"
 )
 
 var statusCmd = &cobra.Command{
@@ -53,8 +54,8 @@ func runStatus(cmd *cobra.Command, args []string) {
 		fmt.Printf("Enabled  : %s\n", enabled)
 
 		// daemon status
-		if isAlreadyRunning(p.Name) {
-			pid := readPID(p.Name)
+		d := daemon.New(p.Name, daemon.KindBackup)
+		if running, pid := d.IsRunning(); running {
 			fmt.Printf("Daemon   : running (PID: %d)\n", pid)
 		} else {
 			fmt.Printf("Daemon   : stopped\n")
@@ -79,21 +80,6 @@ func runStatus(cmd *cobra.Command, args []string) {
 	}
 
 	fmt.Println()
-}
-
-// reads the PID from the PID file
-func readPID(profileName string) int {
-	path, err := pidFilePath(profileName)
-	if err != nil {
-		return 0
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return 0
-	}
-	pid := 0
-	fmt.Sscanf(strings.TrimSpace(string(data)), "%d", &pid)
-	return pid
 }
 
 // looks in the backup directory for the most recent

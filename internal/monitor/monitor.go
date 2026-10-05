@@ -2,8 +2,10 @@ package monitor
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -13,11 +15,15 @@ import (
 	"github.com/Tahsin005/database-backup-tool/internal/db"
 )
 
+var discordClient = &http.Client{
+	Timeout: 10 * time.Second,
+}
+
 // runs the ping loop
-func StartMonitor(profile config.MonitorProfile) {
+func StartMonitor(ctx context.Context, profile config.MonitorProfile) {
 	logFile, err := openMonitorLogFile(profile.DBName)
 	if err != nil {
-		os.Exit(1)
+		return
 	}
 	defer logFile.Close()
 
@@ -33,8 +39,14 @@ func StartMonitor(profile config.MonitorProfile) {
 	ticker := time.NewTicker(time.Duration(profile.MonitorInterval) * time.Minute)
 	defer ticker.Stop()
 
-	for range ticker.C {
-		wasDown = runPing(profile, wasDown, logFile)
+	for {
+		select {
+		case <-ctx.Done():
+			fmt.Fprintf(logFile, "[%s] Monitor stopped gracefully.\n", now())
+			return
+		case <-ticker.C:
+			wasDown = runPing(profile, wasDown, logFile)
+		}
 	}
 }
 
@@ -52,7 +64,7 @@ func runPing(profile config.MonitorProfile, wasDown bool, logFile *os.File) bool
 	err := pg.Ping()
 
 	if err != nil {
-		// DB is down
+		// db is down
 		fmt.Fprintf(logFile, "[%s] PING FAILED: %v\n", now(), err)
 
 		if !wasDown {
@@ -68,11 +80,11 @@ func runPing(profile config.MonitorProfile, wasDown bool, logFile *os.File) bool
 		return true // wasDown = true
 	}
 
-	// DB is up
+	// db is up
 	fmt.Fprintf(logFile, "[%s] PING OK\n", now())
 
 	if wasDown {
-		// DB just recovered — send recovery alert
+		// db just recovered — send recovery alert
 		msg := fmt.Sprintf(
 			"🟢 **Database Recovered**\nProfile: `%s`\nDatabase: `%s` @ `%s:%d`\nTime: %s",
 			profile.Name, profile.DBName, profile.Host, profile.Port,
@@ -84,7 +96,7 @@ func runPing(profile config.MonitorProfile, wasDown bool, logFile *os.File) bool
 	return false // wasDown = false
 }
 
-// POSTs a message to the Discord webhook URL
+// posts a message to the Discord webhook URL
 func sendDiscordAlert(webhookURL string, message string, logFile *os.File) {
 	payload := map[string]string{
 		"content": message,
@@ -96,12 +108,13 @@ func sendDiscordAlert(webhookURL string, message string, logFile *os.File) {
 		return
 	}
 
-	resp, err := http.Post(webhookURL, "application/json", bytes.NewBuffer(body))
+	resp, err := discordClient.Post(webhookURL, "application/json", bytes.NewBuffer(body))
 	if err != nil {
 		fmt.Fprintf(logFile, "[%s] Failed to send Discord alert: %v\n", now(), err)
 		return
 	}
 	defer resp.Body.Close()
+	_, _ = io.Copy(io.Discard, resp.Body)
 
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		fmt.Fprintf(logFile, "[%s] Discord alert sent.\n", now())

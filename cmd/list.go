@@ -6,6 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/Tahsin005/database-backup-tool/internal/config"
+	"github.com/Tahsin005/database-backup-tool/internal/daemon"
 )
 
 var listCmd = &cobra.Command{
@@ -34,19 +35,20 @@ func runList(cmd *cobra.Command, args []string) {
 
 	// header
 	fmt.Printf("\n%-20s %-12s %-16s %-6s %-16s %-10s\n",
-    	"NAME", "TYPE", "HOST", "PORT", "DATABASE", "ENABLED")
+		"NAME", "TYPE", "HOST", "PORT", "DATABASE", "ENABLED")
 	fmt.Println("-----------------------------------------------------------------------------")
-	
+
 	for _, p := range profiles {
 		// check if daemon is running for this profile
 		status := "stopped"
-		if isAlreadyRunning(p.Name) {
+		d := daemon.New(p.Name, daemon.KindBackup)
+		if running, _ := d.IsRunning(); running {
 			status = "running"
 		}
 
 		enabled := "yes"
 		if !p.Enabled {
-		    enabled = "no"
+			enabled = "no"
 		}
 		
 		fmt.Printf("%-20s %-12s %-16s %-6d %-16s %-10s [%s]\n",

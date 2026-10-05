@@ -1,16 +1,16 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"os"
-	"os/exec"
-	"path/filepath"
-	"strconv"
+	"os/signal"
 	"syscall"
 
 	"github.com/spf13/cobra"
 	"github.com/Tahsin005/database-backup-tool/internal/backup"
 	"github.com/Tahsin005/database-backup-tool/internal/config"
+	"github.com/Tahsin005/database-backup-tool/internal/daemon"
 	"github.com/Tahsin005/database-backup-tool/internal/db"
 )
 
@@ -40,37 +40,23 @@ func runStart(cmd *cobra.Command, args []string) {
 	}
 
 	if !profile.Enabled {
-	    fmt.Printf("Error: profile %q is disabled.\n", profileName)
-	    fmt.Printf("Run \"backuptool edit %s\" to enable it.\n", profileName)
-	    os.Exit(1)
+		fmt.Printf("Error: profile %q is disabled.\n", profileName)
+		fmt.Printf("Run \"backuptool edit %s\" to enable it.\n", profileName)
+		os.Exit(1)
 	}
 
-	if !daemonMode {
-		// -------------------------------------------------------
-		// FOREGROUND MODE
-		// We are the parent. Re-launch ourselves as a background
-		// child process, then exit so the terminal is freed.
-		// -------------------------------------------------------
+	d := daemon.New(profileName, daemon.KindBackup)
 
-		// check if already running
-		if isAlreadyRunning(profileName) {
+	if !daemonMode {
+		// foreground mode: re-launch as a background child process and exit
+		if running, _ := d.IsRunning(); running {
 			fmt.Printf("Backup daemon for %q is already running.\n", profileName)
 			fmt.Printf("Run \"backuptool stop %s\" to stop it first.\n", profileName)
 			os.Exit(1)
 		}
 
-		// build the child command: same binary, same args, plus --daemon
-		self := os.Args[0] // path to the current executable
-		childArgs := []string{"start", profileName, "--daemon"}
-
-		child := exec.Command(self, childArgs...)
-
-		// detach from terminal completely
-		child.Stdout = nil
-		child.Stderr = nil
-		child.Stdin = nil
-
-		if err := child.Start(); err != nil {
+		child, err := d.LaunchBackground("start", profileName, "--daemon")
+		if err != nil {
 			fmt.Printf("Failed to start daemon: %v\n", err)
 			os.Exit(1)
 		}
@@ -81,18 +67,15 @@ func runStart(cmd *cobra.Command, args []string) {
 		os.Exit(0)
 	}
 
-	// -------------------------------------------------------
-	// DAEMON MODE
-	// We are the background child. Do the real work.
-	// -------------------------------------------------------
-
-	// write our PID to ~/.backuptool/<profileName>.pid
-	if err := writePIDFile(profileName); err != nil {
+	// daemon mode: background child execution
+	if err := d.WritePID(); err != nil {
+		fmt.Printf("Error writing PID: %v\n", err)
 		os.Exit(1)
 	}
+	defer d.DeletePID()
 
-	// clean up PID file when we exit
-	defer deletePIDFile(profileName)
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 
 	// connect to the database
 	pg := db.NewPostgres(
@@ -103,59 +86,6 @@ func runStart(cmd *cobra.Command, args []string) {
 		profile.DBName,
 	)
 
-	// start the backup scheduler — this blocks forever
-	backup.StartScheduler(pg, profile.BackupDir, profile.Interval)
-}
-
-// -------------------------------------------------------
-// PID file helpers
-// -------------------------------------------------------
-
-func pidFilePath(profileName string) (string, error) {
-	dir, err := config.ConfigDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(dir, profileName+".pid"), nil
-}
-
-func writePIDFile(profileName string) error {
-	path, err := pidFilePath(profileName)
-	if err != nil {
-		return err
-	}
-
-	pid := os.Getpid()
-	return os.WriteFile(path, []byte(strconv.Itoa(pid)), 0600)
-}
-
-func deletePIDFile(profileName string) {
-	path, _ := pidFilePath(profileName)
-	os.Remove(path)
-}
-
-func isAlreadyRunning(profileName string) bool {
-	path, err := pidFilePath(profileName)
-	if err != nil {
-		return false
-	}
-
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return false
-	}
-
-	pid, err := strconv.Atoi(string(data))
-	if err != nil {
-		return false
-	}
-
-	process, err := os.FindProcess(pid)
-	if err != nil {
-		return false
-	}
-
-	// Signal 0 = don't kill, just check if process exists
-	err = process.Signal(syscall.Signal(0))
-	return err == nil
+	// start the backup scheduler
+	backup.StartScheduler(ctx, pg, profile.BackupDir, profile.Interval)
 }
