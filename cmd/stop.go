@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -14,32 +13,31 @@ var stopCmd = &cobra.Command{
 	Use:   "stop <profile-name>",
 	Short: "Stop the running backup daemon for a profile",
 	Args:  cobra.ExactArgs(1),
-	Run:   runStop,
+	RunE:  runStop,
 }
 
 func init() {
 	rootCmd.AddCommand(stopCmd)
 }
 
-func runStop(cmd *cobra.Command, args []string) {
+func runStop(cmd *cobra.Command, args []string) error {
 	profileName := args[0]
 
 	_, err := config.LoadProfile(profileName)
 	if err != nil {
-		fmt.Printf("Error: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("error loading profile: %w", err)
 	}
 
 	d := daemon.New(profileName, daemon.KindBackup)
 	if running, _ := d.IsRunning(); !running {
 		fmt.Printf("Daemon for %q is not running.\n", profileName)
-		os.Exit(0)
+		return nil
 	}
 
 	if err := d.Stop(5 * time.Second); err != nil {
-		fmt.Printf("Error stopping daemon: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("error stopping daemon: %w", err)
 	}
 
 	fmt.Printf("Backup daemon for %q stopped.\n", profileName)
+	return nil
 }

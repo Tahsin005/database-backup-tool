@@ -17,22 +17,21 @@ var editCmd = &cobra.Command{
 	Use:   "edit <profile-name>",
 	Short: "Edit backup directory, interval, or enabled state of a profile",
 	Args:  cobra.ExactArgs(1),
-	Run:   runEdit,
+	RunE:  runEdit,
 }
 
 func init() {
 	rootCmd.AddCommand(editCmd)
 }
 
-func runEdit(cmd *cobra.Command, args []string) {
+func runEdit(cmd *cobra.Command, args []string) error {
 	profileName := args[0]
 	reader := bufio.NewReader(os.Stdin)
 
 	// load the existing profile
 	profile, err := config.LoadProfile(profileName)
 	if err != nil {
-		fmt.Printf("Error: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("error loading profile: %w", err)
 	}
 
 	d := daemon.New(profileName, daemon.KindBackup)
@@ -46,13 +45,12 @@ func runEdit(cmd *cobra.Command, args []string) {
 
 		if answer != "yes" {
 			fmt.Println("Edit cancelled.")
-			os.Exit(0)
+			return nil
 		}
 
 		// stop the daemon
 		if err := d.Stop(5 * time.Second); err != nil {
-			fmt.Printf("Failed to stop daemon: %v\n", err)
-			os.Exit(1)
+			return fmt.Errorf("failed to stop daemon: %w", err)
 		}
 		fmt.Println("Daemon stopped.")
 		fmt.Println()
@@ -69,8 +67,7 @@ func runEdit(cmd *cobra.Command, args []string) {
 	newIntervalStr := promptWithDefault(reader, "Backup interval (minutes)", strconv.Itoa(profile.Interval))
 	newInterval, err := strconv.Atoi(newIntervalStr)
 	if err != nil || newInterval < 1 {
-		fmt.Println("Error: interval must be a positive number")
-		os.Exit(1)
+		return fmt.Errorf("interval must be a positive number")
 	}
 
 	// enabled
@@ -80,8 +77,7 @@ func runEdit(cmd *cobra.Command, args []string) {
 	}
 	newEnabledStr := promptWithDefault(reader, "Enabled (true/false)", currentEnabledStr)
 	if newEnabledStr != "true" && newEnabledStr != "false" {
-		fmt.Println("Error: enabled must be \"true\" or \"false\"")
-		os.Exit(1)
+		return fmt.Errorf("enabled must be \"true\" or \"false\"")
 	}
 	newEnabled := newEnabledStr == "true"
 
@@ -91,8 +87,7 @@ func runEdit(cmd *cobra.Command, args []string) {
 	profile.Enabled = newEnabled
 
 	if err := config.SaveProfile(profile); err != nil {
-		fmt.Printf("Error saving profile: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("error saving profile: %w", err)
 	}
 
 	fmt.Printf("\nProfile %q updated successfully.\n", profileName)
@@ -102,4 +97,6 @@ func runEdit(cmd *cobra.Command, args []string) {
 	} else {
 		fmt.Printf("Profile is now disabled. Daemon will not start for this profile.\n")
 	}
+
+	return nil
 }

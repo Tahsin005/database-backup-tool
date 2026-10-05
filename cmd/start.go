@@ -20,7 +20,7 @@ var startCmd = &cobra.Command{
 	Use:   "start <profile-name>",
 	Short: "Start backup scheduler for a database profile",
 	Args:  cobra.ExactArgs(1), // exactly one argument required
-	Run:   runStart,
+	RunE:  runStart,
 }
 
 func init() {
@@ -29,20 +29,17 @@ func init() {
 	rootCmd.AddCommand(startCmd)
 }
 
-func runStart(cmd *cobra.Command, args []string) {
+func runStart(cmd *cobra.Command, args []string) error {
 	profileName := args[0]
 
 	// make sure the profile exists before doing anything
 	profile, err := config.LoadProfile(profileName)
 	if err != nil {
-		fmt.Printf("Error: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("error loading profile: %w", err)
 	}
 
 	if !profile.Enabled {
-		fmt.Printf("Error: profile %q is disabled.\n", profileName)
-		fmt.Printf("Run \"backuptool edit %s\" to enable it.\n", profileName)
-		os.Exit(1)
+		return fmt.Errorf("profile %q is disabled (run \"backuptool edit %s\" to enable it)", profileName, profileName)
 	}
 
 	d := daemon.New(profileName, daemon.KindBackup)
@@ -50,27 +47,23 @@ func runStart(cmd *cobra.Command, args []string) {
 	if !daemonMode {
 		// foreground mode: re-launch as a background child process and exit
 		if running, _ := d.IsRunning(); running {
-			fmt.Printf("Backup daemon for %q is already running.\n", profileName)
-			fmt.Printf("Run \"backuptool stop %s\" to stop it first.\n", profileName)
-			os.Exit(1)
+			return fmt.Errorf("backup daemon for %q is already running (run \"backuptool stop %s\" to stop it first)", profileName, profileName)
 		}
 
 		child, err := d.LaunchBackground("start", profileName, "--daemon")
 		if err != nil {
-			fmt.Printf("Failed to start daemon: %v\n", err)
-			os.Exit(1)
+			return fmt.Errorf("failed to start daemon: %w", err)
 		}
 
 		// parent exits here — terminal is freed
 		fmt.Printf("Backup daemon started for profile %q (PID: %d)\n", profileName, child.Process.Pid)
 		fmt.Println("Run \"backuptool status\" to check its state.")
-		os.Exit(0)
+		return nil
 	}
 
 	// daemon mode: background child execution
 	if err := d.WritePID(); err != nil {
-		fmt.Printf("Error writing PID: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("error writing PID: %w", err)
 	}
 	defer d.DeletePID()
 
@@ -82,4 +75,5 @@ func runStart(cmd *cobra.Command, args []string) {
 
 	// start the backup scheduler
 	backup.StartScheduler(ctx, pg, profile.BackupDir, profile.Interval)
+	return nil
 }

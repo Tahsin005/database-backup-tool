@@ -3,7 +3,6 @@ package cmd
 import (
 	"bufio"
 	"fmt"
-	"os"
 	"strconv"
 	"strings"
 
@@ -29,7 +28,7 @@ func promptWithDefault(reader *bufio.Reader, label, defaultVal string) string {
 }
 
 // prompts the user interactively for database connection details
-func promptDBConnection(reader *bufio.Reader) config.DBConnConfig {
+func promptDBConnection(reader *bufio.Reader) (config.DBConnConfig, error) {
 	fmt.Println("Database type:")
 	fmt.Println("  [1] PostgreSQL")
 	dbTypeInput := prompt(reader, "Choose (1): ")
@@ -37,8 +36,7 @@ func promptDBConnection(reader *bufio.Reader) config.DBConnConfig {
 		dbTypeInput = "1"
 	}
 	if dbTypeInput != "1" {
-		fmt.Println("Error: only PostgreSQL is supported right now")
-		os.Exit(1)
+		return config.DBConnConfig{}, fmt.Errorf("only PostgreSQL is supported right now")
 	}
 
 	host := promptWithDefault(reader, "Host", "localhost")
@@ -46,26 +44,22 @@ func promptDBConnection(reader *bufio.Reader) config.DBConnConfig {
 	portStr := promptWithDefault(reader, "Port", "5432")
 	port, err := strconv.Atoi(portStr)
 	if err != nil {
-		fmt.Println("Error: port must be a number")
-		os.Exit(1)
+		return config.DBConnConfig{}, fmt.Errorf("port must be a number: %w", err)
 	}
 
 	username := prompt(reader, "Username: ")
 	if username == "" {
-		fmt.Println("Error: username cannot be empty")
-		os.Exit(1)
+		return config.DBConnConfig{}, fmt.Errorf("username cannot be empty")
 	}
 
 	password := prompt(reader, "Password: ")
 	if password == "" {
-		fmt.Println("Error: password cannot be empty")
-		os.Exit(1)
+		return config.DBConnConfig{}, fmt.Errorf("password cannot be empty")
 	}
 
 	dbName := prompt(reader, "Database name: ")
 	if dbName == "" {
-		fmt.Println("Error: database name cannot be empty")
-		os.Exit(1)
+		return config.DBConnConfig{}, fmt.Errorf("database name cannot be empty")
 	}
 
 	sslMode := promptWithDefault(reader, "SSL mode (disable/require/verify-full)", "disable")
@@ -78,5 +72,5 @@ func promptDBConnection(reader *bufio.Reader) config.DBConnConfig {
 		Password: password,
 		DBName:   dbName,
 		SSLMode:  sslMode,
-	}
+	}, nil
 }

@@ -17,24 +17,23 @@ var statusCmd = &cobra.Command{
 	Use:   "status",
 	Short: "Show daemon state and last backup info for all profiles",
 	Args:  cobra.NoArgs,
-	Run:   runStatus,
+	RunE:  runStatus,
 }
 
 func init() {
 	rootCmd.AddCommand(statusCmd)
 }
 
-func runStatus(cmd *cobra.Command, args []string) {
+func runStatus(cmd *cobra.Command, args []string) error {
 	profiles, err := config.LoadAllProfiles()
 	if err != nil {
-		fmt.Printf("Error loading profiles: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("error loading profiles: %w", err)
 	}
 
 	if len(profiles) == 0 {
 		fmt.Println("No profiles configured yet.")
 		fmt.Println("Run \"backuptool add\" to add one.")
-		return
+		return nil
 	}
 
 	fmt.Println()
@@ -80,6 +79,7 @@ func runStatus(cmd *cobra.Command, args []string) {
 	}
 
 	fmt.Println()
+	return nil
 }
 
 // looks in the backup directory for the most recent
