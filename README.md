@@ -36,13 +36,16 @@ A command-line utility written in Go for backing up, restoring, and monitoring P
 
 - Add and manage multiple PostgreSQL database profiles
 - Run scheduled full backups at a configurable interval
-- Compress backup files using gzip (.sql.gz)
+- Compress backup files using gzip (.sql.gz) with atomic temporary file writing
+- SSL Mode support (`disable`, `require`, `verify-full`, etc.)
 - Save backups to a user-specified local directory
 - Daemonize the backup process — terminal stays free
+- Graceful daemon lifecycle management with SIGTERM handling and stale PID recovery
 - Stop, edit, or remove any profile at any time
 - Enable or disable profiles without deleting them
 - Monitor database availability on a separate interval
 - Send Discord alerts when a database goes down or recovers
+- Overlap prevention to avoid concurrent backups or duplicate alert runs
 - Separate config files for backup and monitor profiles
 - All activity logged to per-database log files under ~/.backuptool/
 
@@ -78,7 +81,7 @@ pg_dump --version
 ### Option 1 — Download prebuilt binary (recommended)
 
 ```bash
-curl -L https://github.com/Tahsin005/database-backup-tool/releases/download/1.0.0/backuptool -o backuptool
+curl -L https://github.com/Tahsin005/database-backup-tool/releases/download/v2.0.0/backuptool -o backuptool
 chmod +x backuptool
 ```
 
@@ -97,7 +100,7 @@ cd database-backup-tool
 go mod tidy
 go build -o backuptool .
 
-# Optionally move to PATH
+# optionally move to path
 sudo mv backuptool /usr/local/bin/
 ```
 ---
@@ -108,25 +111,28 @@ sudo mv backuptool /usr/local/bin/
 database-backup-tool/
 ├── main.go
 ├── cmd/
-│   ├── root.go          # Base Cobra command
-│   ├── add.go           # Add a backup profile
-│   ├── start.go         # Start backup daemon
-│   ├── stop.go          # Stop backup daemon
-│   ├── list.go          # List all backup profiles
-│   ├── status.go        # Show backup status
-│   ├── edit.go          # Edit a backup profile
-│   ├── remove.go        # Remove a backup profile
-│   └── monitor.go       # All monitor subcommands
+│   ├── root.go          # base Cobra command & execution entrypoint
+│   ├── prompt.go        # reusable interactive CLI prompt helpers
+│   ├── add.go           # add a backup profile
+│   ├── start.go         # start backup daemon
+│   ├── stop.go          # stop backup daemon
+│   ├── list.go          # list all backup profiles
+│   ├── status.go        # show backup status
+│   ├── edit.go          # edit a backup profile
+│   ├── remove.go        # remove a backup profile
+│   └── monitor.go       # all monitor subcommands
 ├── internal/
 │   ├── config/
-│   │   ├── config.go          # Backup profile read/write
-│   │   └── monitorconfig.go   # Monitor profile read/write
+│   │   ├── config.go          # backup profile read/write & DBConnConfig
+│   │   └── monitorconfig.go   # monitor profile read/write
+│   ├── daemon/
+│   │   └── daemon.go          # unified daemon lifecycle & PID management
 │   ├── db/
-│   │   └── postgres.go        # PostgreSQL connection + ping
+│   │   └── postgres.go        # PostgreSQL connection & ping
 │   ├── backup/
-│   │   └── backup.go          # pg_dump + gzip + scheduler
+│   │   └── backup.go          # pg_dump + atomic gzip writer + scheduler
 │   └── monitor/
-│       └── monitor.go         # Ping loop + Discord alerts
+│       └── monitor.go         # ping loop + Discord alerts
 └── go.mod
 ```
 
@@ -138,12 +144,12 @@ All configuration is stored under `~/.backuptool/`:
 
 ```
 ~/.backuptool/
-├── settings.conf           # Backup profiles
-├── monitorsettings.conf    # Monitor profiles
-├── <profile>.pid           # Backup daemon PID
-├── <profile>.monitor.pid   # Monitor daemon PID
-├── <dbname>.log            # Backup activity log
-└── <dbname>.monitor.log    # Monitor activity log
+├── settings.conf           # backup profiles
+├── monitorsettings.conf    # monitor profiles
+├── <profile>.pid           # backup daemon PID
+├── <profile>.monitor.pid   # monitor daemon PID
+├── <dbname>.log            # backup activity log
+└── <dbname>.monitor.log    # monitor activity log
 ```
 
 ### Backup profile (`settings.conf`)
@@ -156,6 +162,7 @@ port      = 5432
 username  = admin
 password  = admin123
 dbname    = testdb
+sslmode   = disable
 storage   = local
 backupdir = /home/user/backups
 interval  = 60
@@ -172,6 +179,7 @@ port            = 5432
 username        = admin
 password        = admin123
 dbname          = testdb
+sslmode         = disable
 monitorinterval = 5
 webhookurl      = https://discord.com/api/webhooks/xxx/yyy
 enabled         = true
@@ -201,6 +209,7 @@ Port [5432]:
 Username: admin
 Password: admin123
 Database name: testdb
+SSL mode (disable/require/verify-full) [disable]:
 Storage type:
   [1] Local
 Choose [1]:
@@ -428,7 +437,7 @@ Monitor profile "my-local-pg" removed.
 
 ### Backup daemon
 
-When you run `backuptool start <name>`, the process detects it is running in the foreground. It re-launches itself as a background child process with a hidden `--daemon` flag, then exits — freeing the terminal. The child writes its PID to `~/.backuptool/<name>.pid`, then enters a ticker loop that calls `pg_dump` on the configured interval. The dump output is piped directly into a gzip writer and saved as a `.sql.gz` file in the configured backup directory. All activity is written to `~/.backuptool/<dbname>.log`.
+When you run `backuptool start <name>`, the process detects it is running in the foreground. It re-launches itself as a background child process with a hidden `--daemon` flag, then exits — freeing the terminal. The child writes its PID to `~/.backuptool/<name>.pid`, then enters a ticker loop that calls `pg_dump` on the configured interval. The dump output is piped directly into a gzip writer and written atomically to a temporary file before being renamed to `.sql.gz` upon verification. Overlap guards prevent concurrent backups from running simultaneously. All activity is written to `~/.backuptool/<dbname>.log`. The daemon responds to `SIGTERM` signals for graceful shutdown and automatically cleans up PID files.
 
 ### Monitor daemon
 
