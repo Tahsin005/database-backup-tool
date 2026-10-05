@@ -82,13 +82,8 @@ func runMonitorAdd(cmd *cobra.Command, args []string) {
 
 				// copy connection details over
 				profile = config.MonitorProfile{
-					Name:     chosen.Name,
-					Type:     chosen.Type,
-					Host:     chosen.Host,
-					Port:     chosen.Port,
-					Username: chosen.Username,
-					Password: chosen.Password,
-					DBName:   chosen.DBName,
+					Name:         chosen.Name,
+					DBConnConfig: chosen.DBConnConfig,
 				}
 				fmt.Printf("\nImported connection details from %q.\n\n", chosen.Name)
 			} else {
@@ -129,7 +124,7 @@ func runMonitorAdd(cmd *cobra.Command, args []string) {
 
 	// test connection before saving
 	fmt.Println("\nTesting connection...")
-	pg := db.NewPostgres(profile.Host, profile.Port, profile.Username, profile.Password, profile.DBName)
+	pg := db.NewPostgresFromConfig(profile.DBConnConfig)
 	if err := pg.Ping(); err != nil {
 		fmt.Printf("Connection failed: %v\n", err)
 		fmt.Println("Profile not saved.")
@@ -154,27 +149,11 @@ func collectMonitorConnectionDetails(reader *bufio.Reader) config.MonitorProfile
 		os.Exit(1)
 	}
 
-	host := promptWithDefault(reader, "Host", "localhost")
-
-	portStr := promptWithDefault(reader, "Port", "5432")
-	port, err := strconv.Atoi(portStr)
-	if err != nil {
-		fmt.Println("Error: port must be a number")
-		os.Exit(1)
-	}
-
-	username := prompt(reader, "Username: ")
-	password := prompt(reader, "Password: ")
-	dbName := prompt(reader, "Database name: ")
+	connCfg := promptDBConnection(reader)
 
 	return config.MonitorProfile{
-		Name:     name,
-		Type:     "postgres",
-		Host:     host,
-		Port:     port,
-		Username: username,
-		Password: password,
-		DBName:   dbName,
+		Name:         name,
+		DBConnConfig: connCfg,
 	}
 }
 

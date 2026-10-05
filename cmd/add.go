@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
-	"strings"
 
 	"github.com/Tahsin005/database-backup-tool/internal/config"
 	"github.com/Tahsin005/database-backup-tool/internal/db"
@@ -47,74 +46,36 @@ func runAdd(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 
-	// DB type (only postgres for now)
-	fmt.Println("Database type:")
-	fmt.Println("  [1] PostgreSQL")
-	dbTypeInput := prompt(reader, "Choose (1): ")
-	if dbTypeInput == "" {
-		dbTypeInput = "1" // default to postgres
-	}
-	if dbTypeInput != "1" {
-		fmt.Println("Error: only PostgreSQL is supported right now")
-		os.Exit(1)
-	}
-	dbType := "postgres"
-
 	// connection details
-	host := promptWithDefault(reader, "Host", "localhost")
-
-	portStr := promptWithDefault(reader, "Port", "5432")
-	port, err := strconv.Atoi(portStr)
-	if err != nil {
-		fmt.Println("Error: port must be a number")
-		os.Exit(1)
-	}
-
-	username := prompt(reader, "Username: ")
-	if username == "" {
-		fmt.Println("Error: username cannot be empty")
-		os.Exit(1)
-	}
-
-	password := prompt(reader, "Password: ")
-	if password == "" {
-		fmt.Println("Error: password cannot be empty")
-		os.Exit(1)
-	}
-
-	dbName := prompt(reader, "Database name: ")
-	if dbName == "" {
-		fmt.Println("Error: database name cannot be empty")
-		os.Exit(1)
-	}
+	connCfg := promptDBConnection(reader)
 
 	// storage type
 	fmt.Println("Storage type:")
 	fmt.Println("  [1] Local")
 	storageInput := promptWithDefault(reader, "Choose", "1")
 	if storageInput != "1" {
-	    fmt.Println("Error: only local storage is supported right now")
-	    os.Exit(1)
+		fmt.Println("Error: only local storage is supported right now")
+		os.Exit(1)
 	}
 	storage := "local"
-	
+
 	// backup directory
 	defaultDir := filepath.Join(os.Getenv("HOME"), "backups")
 	backupDir := promptWithDefault(reader, "Backup directory", defaultDir)
-	
+
 	// backup interval
 	intervalStr := promptWithDefault(reader, "Backup interval (minutes)", "60")
 	interval, err := strconv.Atoi(intervalStr)
 	if err != nil || interval < 1 {
-	    fmt.Println("Error: interval must be a positive number")
-	    os.Exit(1)
+		fmt.Println("Error: interval must be a positive number")
+		os.Exit(1)
 	}
 
 	// test the connection before saving
 	fmt.Println()
 	fmt.Println("Testing connection...")
 
-	pg := db.NewPostgres(host, port, username, password, dbName)
+	pg := db.NewPostgresFromConfig(connCfg)
 	if err := pg.Ping(); err != nil {
 		fmt.Printf("Connection failed: %v\n", err)
 		fmt.Println("Profile not saved. Please check your credentials and try again.")
@@ -125,17 +86,12 @@ func runAdd(cmd *cobra.Command, args []string) {
 
 	// save the profile
 	profile := config.DBProfile{
-		Name:     name,
-		Type:     dbType,
-		Host:     host,
-		Port:     port,
-		Username: username,
-		Password: password,
-		DBName:   dbName,
-		Storage:  storage,
-		BackupDir: backupDir,
-		Interval: interval,
-		Enabled:   true,
+		Name:         name,
+		DBConnConfig: connCfg,
+		Storage:      storage,
+		BackupDir:    backupDir,
+		Interval:     interval,
+		Enabled:      true,
 	}
 
 	if err := config.SaveProfile(profile); err != nil {
@@ -145,22 +101,4 @@ func runAdd(cmd *cobra.Command, args []string) {
 
 	fmt.Printf("\nProfile %q saved successfully!\n", name)
 	fmt.Printf("Run \"backuptool start %s\" to start backing up.\n", name)
-}
-
-// prints a label and reads a line from stdin
-func prompt(reader *bufio.Reader, label string) string {
-	fmt.Print(label)
-	input, _ := reader.ReadString('\n')
-	return strings.TrimSpace(input)
-}
-
-// shows a default value and uses it if user hits enter
-func promptWithDefault(reader *bufio.Reader, label, defaultVal string) string {
-	fmt.Printf("%s [%s]: ", label, defaultVal)
-	input, _ := reader.ReadString('\n')
-	input = strings.TrimSpace(input)
-	if input == "" {
-		return defaultVal
-	}
-	return input
 }

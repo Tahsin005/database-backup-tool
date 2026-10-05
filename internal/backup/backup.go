@@ -45,7 +45,14 @@ func RunBackup(pg *db.Postgres, backupDir string, logger *os.File) error {
 		"-F", "p",
 	)
 
-	cmd.Env = append(os.Environ(), fmt.Sprintf("PGPASSWORD=%s", pg.Password))
+	sslMode := pg.SSLMode
+	if sslMode == "" {
+		sslMode = "disable"
+	}
+	cmd.Env = append(os.Environ(),
+		fmt.Sprintf("PGPASSWORD=%s", pg.Password),
+		fmt.Sprintf("PGSSLMODE=%s", sslMode),
+	)
 	cmd.Stdout = gzWriter
 	cmd.Stderr = logger
 

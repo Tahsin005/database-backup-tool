@@ -9,13 +9,8 @@ import (
 )
 
 type MonitorProfile struct {
-	Name            string
-	Type            string
-	Host            string
-	Port            int
-	Username        string
-	Password        string
-	DBName          string
+	Name string
+	DBConnConfig
 	MonitorInterval int    // in minutes
 	WebhookURL      string
 	Enabled         bool
@@ -112,12 +107,7 @@ func writeAllMonitorProfiles(profiles map[string]MonitorProfile) error {
 	var sb strings.Builder
 	for _, p := range profiles {
 		sb.WriteString(fmt.Sprintf("[%s]\n", p.Name))
-		sb.WriteString(fmt.Sprintf("type            = %s\n", p.Type))
-		sb.WriteString(fmt.Sprintf("host            = %s\n", p.Host))
-		sb.WriteString(fmt.Sprintf("port            = %d\n", p.Port))
-		sb.WriteString(fmt.Sprintf("username        = %s\n", p.Username))
-		sb.WriteString(fmt.Sprintf("password        = %s\n", p.Password))
-		sb.WriteString(fmt.Sprintf("dbname          = %s\n", p.DBName))
+		WriteConnFields(&sb, p.DBConnConfig)
 		sb.WriteString(fmt.Sprintf("monitorinterval = %d\n", p.MonitorInterval))
 		sb.WriteString(fmt.Sprintf("webhookurl      = %s\n", p.WebhookURL))
 		sb.WriteString(fmt.Sprintf("enabled         = %t\n", p.Enabled))
@@ -143,7 +133,12 @@ func parseMonitorConfig(content string) (map[string]MonitorProfile, error) {
 				profiles[current.Name] = *current
 			}
 			name := line[1 : len(line)-1]
-			current = &MonitorProfile{Name: name}
+			current = &MonitorProfile{
+				Name: name,
+				DBConnConfig: DBConnConfig{
+					SSLMode: "disable",
+				},
+			}
 			continue
 		}
 
@@ -159,22 +154,11 @@ func parseMonitorConfig(content string) (map[string]MonitorProfile, error) {
 		key := strings.TrimSpace(parts[0])
 		val := strings.TrimSpace(parts[1])
 
+		if ParseConnField(&current.DBConnConfig, key, val) {
+			continue
+		}
+
 		switch key {
-		case "type":
-			current.Type = val
-		case "host":
-			current.Host = val
-		case "port":
-			port, err := strconv.Atoi(val)
-			if err == nil {
-				current.Port = port
-			}
-		case "username":
-			current.Username = val
-		case "password":
-			current.Password = val
-		case "dbname":
-			current.DBName = val
 		case "monitorinterval":
 			interval, err := strconv.Atoi(val)
 			if err == nil {

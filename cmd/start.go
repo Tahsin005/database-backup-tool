@@ -78,13 +78,7 @@ func runStart(cmd *cobra.Command, args []string) {
 	defer stop()
 
 	// connect to the database
-	pg := db.NewPostgres(
-		profile.Host,
-		profile.Port,
-		profile.Username,
-		profile.Password,
-		profile.DBName,
-	)
+	pg := db.NewPostgresFromConfig(profile.DBConnConfig)
 
 	// start the backup scheduler
 	backup.StartScheduler(ctx, pg, profile.BackupDir, profile.Interval)

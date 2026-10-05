@@ -8,18 +8,23 @@ import (
 	"strings"
 )
 
-type DBProfile struct {
-	Name string
-	Type string
-	Host string
-	Port int
+type DBConnConfig struct {
+	Type     string
+	Host     string
+	Port     int
 	Username string
 	Password string
-	DBName string
-	Storage string
+	DBName   string
+	SSLMode  string
+}
+
+type DBProfile struct {
+	Name string
+	DBConnConfig
+	Storage   string
 	BackupDir string
-	Interval int
-	Enabled bool
+	Interval  int
+	Enabled   bool
 }
 
 // returns ~/.backuptool
@@ -91,7 +96,6 @@ func ProfileExists(name string) (bool, error) {
 	return ok, nil
 }
 
-
 // writes a profile to settings.conf
 func SaveProfile(profile DBProfile) error {
 	if err := EnsureConfigDir(); err != nil {
@@ -118,12 +122,7 @@ func writeAllProfiles(profiles map[string]DBProfile) error {
 	var sb strings.Builder
 	for _, p := range profiles {
 		sb.WriteString(fmt.Sprintf("[%s]\n", p.Name))
-		sb.WriteString(fmt.Sprintf("type     = %s\n", p.Type))
-		sb.WriteString(fmt.Sprintf("host     = %s\n", p.Host))
-		sb.WriteString(fmt.Sprintf("port     = %d\n", p.Port))
-		sb.WriteString(fmt.Sprintf("username = %s\n", p.Username))
-		sb.WriteString(fmt.Sprintf("password = %s\n", p.Password))
-		sb.WriteString(fmt.Sprintf("dbname   = %s\n", p.DBName))
+		WriteConnFields(&sb, p.DBConnConfig)
 		sb.WriteString(fmt.Sprintf("storage   = %s\n", p.Storage))
 		sb.WriteString(fmt.Sprintf("backupdir = %s\n", p.BackupDir))
 		sb.WriteString(fmt.Sprintf("interval  = %d\n", p.Interval))
@@ -153,7 +152,12 @@ func parseConfig(content string) (map[string]DBProfile, error) {
 				profiles[current.Name] = *current // save previous profile
 			}
 			name := line[1 : len(line)-1]
-			current = &DBProfile{Name: name}
+			current = &DBProfile{
+				Name: name,
+				DBConnConfig: DBConnConfig{
+					SSLMode: "disable",
+				},
+			}
 			continue
 		}
 
@@ -170,31 +174,20 @@ func parseConfig(content string) (map[string]DBProfile, error) {
 		key := strings.TrimSpace(parts[0])
 		val := strings.TrimSpace(parts[1])
 
+		if ParseConnField(&current.DBConnConfig, key, val) {
+			continue
+		}
+
 		switch key {
-		case "type":
-			current.Type = val
-		case "host":
-			current.Host = val
-		case "port":
-			port, err := strconv.Atoi(val)
-			if err == nil {
-				current.Port = port
-			}
-		case "username":
-			current.Username = val
-		case "password":
-			current.Password = val
-		case "dbname":
-			current.DBName = val
 		case "storage":                         
-		    current.Storage = val
+			current.Storage = val
 		case "backupdir":                        
-		    current.BackupDir = val
+			current.BackupDir = val
 		case "interval":
-		    interval, err := strconv.Atoi(val)
-		    if err == nil {
-		        current.Interval = interval
-		    }
+			interval, err := strconv.Atoi(val)
+			if err == nil {
+				current.Interval = interval
+			}
 		case "enabled":
 			current.Enabled = val == "true"
 		}
@@ -206,6 +199,52 @@ func parseConfig(content string) (map[string]DBProfile, error) {
 	}
 
 	return profiles, nil
+}
+
+// parses standard database connection keys into a db connection config
+func ParseConnField(cfg *DBConnConfig, key, val string) bool {
+	switch key {
+	case "type":
+		cfg.Type = val
+		return true
+	case "host":
+		cfg.Host = val
+		return true
+	case "port":
+		port, err := strconv.Atoi(val)
+		if err == nil {
+			cfg.Port = port
+		}
+		return true
+	case "username":
+		cfg.Username = val
+		return true
+	case "password":
+		cfg.Password = val
+		return true
+	case "dbname":
+		cfg.DBName = val
+		return true
+	case "sslmode":
+		cfg.SSLMode = val
+		return true
+	}
+	return false
+}
+
+// writes standard database connection keys into a strings builder
+func WriteConnFields(sb *strings.Builder, cfg DBConnConfig) {
+	sslMode := cfg.SSLMode
+	if sslMode == "" {
+		sslMode = "disable"
+	}
+	sb.WriteString(fmt.Sprintf("type     = %s\n", cfg.Type))
+	sb.WriteString(fmt.Sprintf("host     = %s\n", cfg.Host))
+	sb.WriteString(fmt.Sprintf("port     = %d\n", cfg.Port))
+	sb.WriteString(fmt.Sprintf("username = %s\n", cfg.Username))
+	sb.WriteString(fmt.Sprintf("password = %s\n", cfg.Password))
+	sb.WriteString(fmt.Sprintf("dbname   = %s\n", cfg.DBName))
+	sb.WriteString(fmt.Sprintf("sslmode  = %s\n", sslMode))
 }
 
 func RemoveProfile(name string) error {

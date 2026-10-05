@@ -53,14 +53,7 @@ func StartMonitor(ctx context.Context, profile config.MonitorProfile) {
 // performs one ping and handles alerting
 // returns the new "wasDown" state
 func runPing(profile config.MonitorProfile, wasDown bool, logFile *os.File) bool {
-	pg := db.NewPostgres(
-		profile.Host,
-		profile.Port,
-		profile.Username,
-		profile.Password,
-		profile.DBName,
-	)
-
+	pg := db.NewPostgresFromConfig(profile.DBConnConfig)
 	err := pg.Ping()
 
 	if err != nil {
